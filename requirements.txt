@@ -1,0 +1,15 @@
+# backend/requirements.txt
+# ============================
+# Django プロジェクトの必要パッケージ一覧
+# ============================
+
+Django>=4.2,<5.0
+mysqlclient>=2.1
+djangorestframework
+djangorestframework-simplejwt
+python-dotenv
+django-cors-headers
+ulid-py
+boto3
+django-storages
+Pillow
