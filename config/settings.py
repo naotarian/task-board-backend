@@ -29,6 +29,8 @@ INSTALLED_APPS = [
     'users',
     'projects',
     'storages',
+    'organizations',
+    'shared',
 ]
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (

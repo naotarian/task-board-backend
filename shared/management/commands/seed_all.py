@@ -7,6 +7,7 @@ class Command(BaseCommand):
   def handle(self, *args, **options):
     seeds = [
       "seed_roles",
+      "seed_organization_roles",
       # 今後追加されるシーダー
       # "seed_categories",
       # "seed_tags",
