@@ -11,7 +11,7 @@ SECRET_KEY = os.getenv("SECRET_KEY")
 
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['backend', 'nginx', ".localhost"]
 
 
 # Application definition
@@ -47,8 +47,24 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'corsheaders.middleware.CorsMiddleware',
+    'shared.middleware.subdomain_middleware.SubdomainMiddleware'
 ]
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r"^http:\/\/([a-zA-Z0-9-]+)\.localhost:3000$",
+    r"^http:\/\/localhost:3000$",]
 
+CORS_ALLOW_HEADERS = [
+    "accept",
+    "accept-encoding",
+    "authorization",
+    "content-type",
+    "dnt",
+    "origin",
+    "user-agent",
+    "x-csrftoken",
+    "x-requested-with",
+    "x-subdomain",
+]
 ROOT_URLCONF = 'config.urls'
 
 TEMPLATES = [
@@ -137,7 +153,7 @@ LOGGING = {
     'disable_existing_loggers': False,
     'handlers': {
         'file': {
-            'level': 'WARNING',
+            'level': 'DEBUG',
             'class': 'logging.FileHandler',
             'filename': os.path.join(LOG_DIR, 'django.log'),
         },
@@ -147,6 +163,11 @@ LOGGING = {
             'handlers': ['file'],
             'level': 'WARNING',
             'propagate': True,
+        },
+        'development': {
+            'handlers': ['file'],
+            'level': 'DEBUG',
+            'propagate': False,
         },
     },
 }

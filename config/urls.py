@@ -22,10 +22,11 @@ from users.views import (
     PasswordResetView,
     PasswordResetConfirmView,
 )
+from users.auth_views.login_view import CustomTokenObtainPairView
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
+    path('api/token/', CustomTokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('api/me/', MeView.as_view(), name='me'),
     path('api/password-reset/', PasswordResetView.as_view(), name='password_reset'),
