@@ -13,19 +13,50 @@ from django.contrib.auth.tokens import default_token_generator
 from django.utils.encoding import force_str
 from django.utils.timezone import now
 from django.conf import settings
-
+from organizations.models import OrganizationUser, Organization, OrganizationUserRole
+import logging
 User = get_user_model()
-class MeView(APIView):
-    permission_classes = [IsAuthenticated]
 
-    def get(self, request):
-        user = request.user
-        return Response({
-            'id': user.id,
-            'username': user.username,
-            'email': user.email,
-            'verified_at': user.verified_at,
-        })
+class MeView(APIView):
+  permission_classes = [IsAuthenticated]
+
+  def get(self, request):
+    user = request.user
+    organization_users = OrganizationUser.objects.filter(user=user).select_related('organization')
+    organizations_data = []
+
+    for org_user in organization_users:
+      # OrganizationUserRoleを取得
+      org_user_roles = OrganizationUserRole.objects.filter(
+        organization_user=org_user
+      ).select_related('role')
+
+      # すべてのロールdisplay_nameをリストにする
+      role_display_names = [
+        {
+          "name": role.role.name,
+          "display_name": role.role.display_name,
+        }
+        for role in org_user_roles
+      ]
+
+      organizations_data.append({
+        "id": org_user.organization.id,
+        "name": org_user.organization.name,
+        "subdomain": org_user.organization.sub_domain,
+        "logo": request.build_absolute_uri(org_user.organization.logo.url) if org_user.organization.logo else None,
+        "roles": role_display_names,
+      })
+
+    logger = logging.getLogger('development')
+    logger.info(organizations_data)
+    return Response({
+      'id': user.id,
+      'username': user.username,
+      'email': user.email,
+      'verified_at': user.verified_at,
+      "organizations": organizations_data,
+    })
 
 
 class PasswordResetView(APIView):

@@ -1,6 +1,6 @@
 from django.http import JsonResponse
 from organizations.models import Organization
-import logging
+
 
 def check_subdomain(request):
   subdomain = request.headers.get('x-subdomain')
