@@ -1,37 +1,57 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
 from rest_framework import status
-from .serializers import RegisterSerializer
 from django.contrib.auth import get_user_model
 from django.contrib.auth.tokens import default_token_generator
-from django.utils.http import urlsafe_base64_encode
-from django.utils.encoding import force_bytes
-from django.core.mail import send_mail
 from django.utils.http import urlsafe_base64_decode
 from django.contrib.auth.tokens import default_token_generator
 from django.utils.encoding import force_str
 from django.utils.timezone import now
-from django.conf import settings
 from organizations.models import OrganizationUser, Organization, OrganizationUserRole
 import logging
 User = get_user_model()
 
+import logging
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from rest_framework.authentication import SessionAuthentication
+
 class MeView(APIView):
-  permission_classes = [IsAuthenticated]
+  authentication_classes = [SessionAuthentication]
+  permission_classes = []
 
   def get(self, request):
+    subdomain = request.headers.get('x-subdomain')
+    log = logging.getLogger('development')
+
+    if not request.user.is_authenticated:
+      return Response({'detail': '認証情報がありません'}, status=status.HTTP_401_UNAUTHORIZED)
+
     user = request.user
+    # logout(request)
+
+    # ① サブドメインがあれば、そのorganizationに所属しているかチェック
+    if subdomain and subdomain != "localhost":  # ローカル開発用の例外
+      try:
+        organization = Organization.objects.get(sub_domain=subdomain)
+      except Organization.DoesNotExist:
+        log.info('サブドメインに該当する組織が存在しません')
+        return Response({'detail': '組織が存在しません'}, status=status.HTTP_400_BAD_REQUEST)
+
+      # 所属しているかチェック
+      if not OrganizationUser.objects.filter(user=user, organization=organization).exists():
+        log.info('ユーザーがこの組織に所属していません')
+        return Response({'detail': 'この組織に所属していません'}, status=status.HTTP_403_FORBIDDEN)
+
     organization_users = OrganizationUser.objects.filter(user=user).select_related('organization')
     organizations_data = []
 
     for org_user in organization_users:
-      # OrganizationUserRoleを取得
       org_user_roles = OrganizationUserRole.objects.filter(
         organization_user=org_user
       ).select_related('role')
 
-      # すべてのロールdisplay_nameをリストにする
       role_display_names = [
         {
           "name": role.role.name,
@@ -48,8 +68,6 @@ class MeView(APIView):
         "roles": role_display_names,
       })
 
-    logger = logging.getLogger('development')
-    logger.info(organizations_data)
     return Response({
       'id': user.id,
       'username': user.username,
@@ -58,128 +76,43 @@ class MeView(APIView):
       "organizations": organizations_data,
     })
 
-
-class PasswordResetView(APIView):
-  def post(self, request):
-    identifier = request.data.get('email')
-
-    if not identifier:
-        return Response({'error': 'メールアドレスまたはユーザー名を入力してください'}, status=status.HTTP_400_BAD_REQUEST)
-
-    try:
-        # @ が含まれてたら email として探す、それ以外は username
-        if '@' in identifier:
-            user = User.objects.get(email=identifier)
-        else:
-            user = User.objects.get(username=identifier)
-
-    except User.DoesNotExist:
-        # 存在しなくてもセキュリティ上同じレスポンスにする
-        return Response({'message': 'リセットメールを送信しました'}, status=status.HTTP_200_OK)
-
-    token = default_token_generator.make_token(user)
-    uid = urlsafe_base64_encode(force_bytes(user.pk))
-    reset_link = f"http://localhost:3000/reset-password?uid={uid}&token={token}"
-
-    send_mail(
-      subject="パスワードリセットリンク",
-      message=f"以下のリンクからパスワードをリセットしてください：\n{reset_link}",
-      from_email=None,
-      recipient_list=[user.email],
-    )
-
-    return Response({'message': 'リセットメールを送信しました'}, status=status.HTTP_200_OK)
-
-class PasswordResetConfirmView(APIView):
-  def post(self, request):
-    uidb64 = request.data.get("uid")
-    token = request.data.get("token")
-    new_password = request.data.get("new_password")
-
-    if not uidb64 or not token or not new_password:
-        return Response({"error": "不正なリクエストです"}, status=400)
-
-    try:
-        uid = force_str(urlsafe_base64_decode(uidb64))
-        user = User.objects.get(pk=uid)
-    except (User.DoesNotExist, ValueError, TypeError):
-        return Response({"error": "ユーザーが見つかりません"}, status=400)
-
-    if not default_token_generator.check_token(user, token):
-        return Response({"error": "トークンが無効または期限切れです"}, status=400)
-
-    user.set_password(new_password)
-    user.save()
-
-    return Response({"message": "パスワードをリセットしました"}, status=200)
-
-class RegisterView(APIView):
-    def post(self, request):
-        serializer = RegisterSerializer(data=request.data)
-        if serializer.is_valid():
-            user = serializer.save()
-
-            # 認証メール送信準備
-            token = default_token_generator.make_token(user)
-            uid = urlsafe_base64_encode(force_bytes(user.pk))
-            verify_url = f"http://localhost:3000/verify-email?uid={uid}&token={token}"
-
-            send_mail(
-                 "【TaskBoard】メールアドレス認証のご案内",
-                f"以下のリンクからメールアドレスの認証を行ってください：\n{verify_url}",
-                from_email="noreply@example.com",
-                recipient_list=[user.email],
-                fail_silently=False,
-            )
-
-            return Response({"message": "仮登録が完了しました。メールを確認してください"}, status=status.HTTP_201_CREATED)
-
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
 class VerifyEmailView(APIView):
-    def get(self, request):
-        uidb64 = request.query_params.get("uid")
-        token = request.query_params.get("token")
+  def get(self, request):
+    uidb64 = request.query_params.get("uid")
+    token = request.query_params.get("token")
+    logger = logging.getLogger('development')
 
-        if not uidb64 or not token:
-            return Response({"error": "無効なリクエストです"}, status=status.HTTP_400_BAD_REQUEST)
+    if not uidb64 or not token:
+      return Response({"error": "無効なリクエストです"}, status=status.HTTP_400_BAD_REQUEST)
+    token = token.rstrip('/')
 
-        try:
-            uid = force_str(urlsafe_base64_decode(uidb64))
-            user = User.objects.get(pk=uid)
-        except (User.DoesNotExist, ValueError, TypeError, OverflowError):
-            return Response({"error": "ユーザーが見つかりません"}, status=status.HTTP_400_BAD_REQUEST)
+    try:
+      uid = force_str(urlsafe_base64_decode(uidb64))
+      logger.info(f'[Verify] デコードされたuid: {uid}')
+      user = User.objects.get(pk=uid)
 
-        if default_token_generator.check_token(user, token):
-            user.verified_at = now()
-            user.save()
-            return Response({"message": "メールアドレスが認証されました"}, status=status.HTTP_200_OK)
-        else:
-            return Response({"error": "トークンが無効または期限切れです"}, status=status.HTTP_400_BAD_REQUEST)
+      logger.info(f'[Verify] email: {user.email}')
+      logger.info(f'[Verify] password_hash: {user.password}')
+      logger.info(f'[Verify] last_login: {user.last_login}')
+      logger.info(f'[Verify] is_active: {user.is_active}')
+      logger.info(f'[Verify] 検証するトークン: {token}')
+    except (User.DoesNotExist, ValueError, TypeError, OverflowError):
+      return Response({"error": "ユーザーが見つかりません"}, status=status.HTTP_400_BAD_REQUEST)
 
-class ResendVerificationEmailView(APIView):
-    def post(self, request):
-        username = request.data.get("username")
-        if not username:
-            return Response({"error": "ユーザー名が必要です。"}, status=400)
+    if default_token_generator.check_token(user, token):
+      user.verified_at = now()
+      user.save()
+      user_data = {
+          "id": user.id,
+          "username": user.username,
+          "email": user.email,
+          "first_name": user.first_name,
+          "last_name": user.last_name,
+          "verified_at": user.verified_at,
+      }
 
-        try:
-            user = User.objects.get(username=username)
-        except User.DoesNotExist:
-            return Response({"error": "ユーザーが存在しません。"}, status=404)
+      return Response({"message": "メールアドレスが認証されました", "user": user_data}, status=status.HTTP_200_OK)
+    else:
+      return Response({"error": "トークンが無効または期限切れです"}, status=status.HTTP_400_BAD_REQUEST)
 
-        if user.verified_at:
-            return Response({"error": "すでに認証済みです。"}, status=400)
 
-        uid = urlsafe_base64_encode(force_bytes(user.pk))
-        token = default_token_generator.make_token(user)
-        verify_url = f"http://localhost:3000/verify-email?uid={uid}&token={token}"
-
-        send_mail(
-            "【TaskBoard】メールアドレス認証のご案内",
-            f"以下のリンクからメールアドレスの認証を行ってください：\n{verify_url}",
-            settings.DEFAULT_FROM_EMAIL,
-            [user.email],
-        )
-
-        return Response({"message": "認証メールを再送信しました。"})

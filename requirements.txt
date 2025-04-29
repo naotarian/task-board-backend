@@ -13,3 +13,4 @@ ulid-py
 boto3
 django-storages
 Pillow
+autopep8

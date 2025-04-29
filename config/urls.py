@@ -16,22 +16,16 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path, include
-from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
+from rest_framework_simplejwt.views import TokenRefreshView
 from users.views import (
-    MeView,
-    PasswordResetView,
-    PasswordResetConfirmView,
+  MeView,
 )
-from users.auth_views.login_view import CustomTokenObtainPairView
 
 urlpatterns = [
-    path('admin/', admin.site.urls),
-    path('api/token/', CustomTokenObtainPairView.as_view(), name='token_obtain_pair'),
-    path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
-    path('api/me/', MeView.as_view(), name='me'),
-    path('api/password-reset/', PasswordResetView.as_view(), name='password_reset'),
-    path("api/password-reset-confirm/", PasswordResetConfirmView.as_view(), name="password_reset_confirm"),
-    path("api/", include("users.urls")),
-    path('api/projects/', include('projects.urls')),
-    path('api/organizations/', include('organizations.urls')),
+  path('admin/', admin.site.urls),
+  path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+  path('api/me/', MeView.as_view(), name='me'),
+  path("api/", include("users.urls")),
+  path('api/projects/', include('projects.urls')),
+  path('api/organizations/', include('organizations.urls')),
 ]

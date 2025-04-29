@@ -1,46 +1,47 @@
-from rest_framework_simplejwt.views import TokenObtainPairView
-from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
-from rest_framework import serializers
+from django.contrib.auth import authenticate, login
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
 from organizations.models import Organization, OrganizationUser
+from django.views.decorators.csrf import csrf_exempt
+from django.utils.decorators import method_decorator
 import logging
 
-class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
-    def validate(self, attrs):
-        data = super().validate(attrs)
+@method_decorator(csrf_exempt, name='dispatch')
+class LoginView(APIView):
+  authentication_classes = []  # デフォルト認証無効化
+  permission_classes = []      # パーミッションも無効化
+  def post(self, request):
+    username = request.data.get('username')
+    password = request.data.get('password')
 
-        # loggerを取得
-        logger = logging.getLogger('development')
+    # ① サブドメインヘッダーを取得
+    subdomain = request.headers.get('x-subdomain')
 
-        # リクエストオブジェクトを取得
-        request = self.context.get('request')
-        if request is None:
-            raise serializers.ValidationError('リクエスト情報が取得できません')
+    if not subdomain:
+      return Response({'detail': 'サブドメインが指定されていません。'}, status=status.HTTP_400_BAD_REQUEST)
 
-        # サブドメインをヘッダーから取得
-        subdomain = request.headers.get('x-subdomain')
-        logger.info(f'サブドメイン: {subdomain}')
+    # ② 組織を取得
+    if subdomain == 'localhost':
+      organization = None  # ローカル開発用に特別扱い
+    else:
+      try:
+        organization = Organization.objects.get(sub_domain=subdomain)
+      except Organization.DoesNotExist:
+        return Response({'detail': '指定された組織が存在しません。'}, status=status.HTTP_404_NOT_FOUND)
 
-        if not subdomain:
-            raise serializers.ValidationError('サブドメインが送信されていません')
+    # ③ ユーザー認証
+    user = authenticate(request, username=username, password=password)
+    if user is None:
+      return Response({'detail': 'ユーザー名またはパスワードが間違っています。'}, status=status.HTTP_401_UNAUTHORIZED)
 
-        # ローカル開発用例外
-        if subdomain == 'localhost':
-            return data
+    # ④ 組織所属チェック（localhostの場合はスキップ）
+    if organization:
+      if not OrganizationUser.objects.filter(user=user, organization=organization).exists():
+        return Response({'detail': 'この組織に所属していません。'}, status=status.HTTP_403_FORBIDDEN)
 
-        # サブドメインから組織取得
-        try:
-            organization = Organization.objects.get(sub_domain=subdomain)
-        except Organization.DoesNotExist:
-            raise serializers.ValidationError('組織が存在しません')
+    # ⑤ ログイン処理
+    request.session.flush()
+    login(request, user)
 
-        user = self.user  # SimpleJWTが認証したユーザー
-        logger.info(f'ログイン試行ユーザー: {user.username}')
-
-        # 中間テーブル（OrganizationUser）で所属チェック
-        if not OrganizationUser.objects.filter(user=user, organization=organization).exists():
-            raise serializers.ValidationError('この組織に所属していません')
-
-        return data
-
-class CustomTokenObtainPairView(TokenObtainPairView):
-    serializer_class = CustomTokenObtainPairSerializer
+    return Response({'detail': 'ログイン成功'}, status=status.HTTP_200_OK)
