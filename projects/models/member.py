@@ -4,7 +4,7 @@ from users.models import User
 from shared.models.soft_delete import SoftDeleteModel
 
 class ProjectMember(SoftDeleteModel):
-  id = ULIDField(primary_key=True)  # ← これを追加
+  id = ULIDField(primary_key=True)
   project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="members")
   user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="project_members")
 

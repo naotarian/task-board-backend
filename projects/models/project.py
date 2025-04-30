@@ -21,6 +21,11 @@ class ULIDField(models.CharField):
 
 class Project(SoftDeleteModel):
   id = ULIDField(primary_key=True)
+  organization = models.ForeignKey(
+    "organizations.Organization",
+    on_delete=models.CASCADE,
+    related_name="projects"
+  )
   name = models.CharField(max_length=100)
   description = models.TextField(blank=True)
   thumbnail = models.ImageField(
